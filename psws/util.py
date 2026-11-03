@@ -1,7 +1,7 @@
 
-def n_files(dir_path):
+def listfiles(dir_path):
   import os
-  return len([f for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))])
+  return [f for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))]
 
 def listdirs(dir_base, regex=None, sort=True):
   import os
