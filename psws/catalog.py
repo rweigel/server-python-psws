@@ -44,11 +44,11 @@ if __name__ == "__main__":
   catalog = read_catalog_csv()
   print(json.dumps(catalog, indent=2))
 
-  from util import listdirs
-  regex = "S[0-9]{6}"
-  #regex = "^[A-Z][0-9]{6}"
+  from util import listdirs, n_files
+  regex = "^[A-Z][0-9]{6}"
   station_dirs = listdirs(data_dir(), regex=regex)
   _log(f"{len(station_dirs)} station directories (regex = {regex}) found in {data_dir()}")
+
   catalog = {}
   for station_dir in station_dirs:
 
@@ -56,11 +56,15 @@ if __name__ == "__main__":
 
     mag_dir = data_dir() / station_dir / "magData"
     if mag_dir.exists() and mag_dir.is_dir():
-      _log(f"  Found magData/ (magnetometer) with {len(list(mag_dir.iterdir()))} files")
+      n_mag = n_files(mag_dir)
+      if n_mag > 0:
+        _log(f"  Found magData/ (magnetometer) with {n_mag} files")
 
     dop_dir = data_dir() / station_dir / "csvData"
     if dop_dir.exists() and dop_dir.is_dir():
-      _log(f"  Found csvData/ (doppler) with {len(list(dop_dir.iterdir()))} files")
+      n_dop = n_files(dop_dir)
+      if n_dop > 0:
+        _log(f"  Found csvData/ (doppler) with {n_dop} files")
 
     obs_dirs = listdirs(data_dir() / station_dir, regex="^OBS.*")
     if len(obs_dirs) > 0:
