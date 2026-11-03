@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "psws"
+version = "0.0.1"
+requires-python = ">=3.8"
+dependencies = [
+  "hapiserver @ git+https://github.com/hapi-server/server-python.git",
+  "requests",
+  "pandas"
+]
+
+[project.optional-dependencies]
+test = [
+  "a2wsgi",
+  "flask",
+  "httpx2",
+  "pytest"
+]
+
+[tool.setuptools]
+packages = ["psws"]
+
+[tool.setuptools.package-data]
+psws = ["*.json"]

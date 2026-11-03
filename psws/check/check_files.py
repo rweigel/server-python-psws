@@ -71,6 +71,7 @@ def location_doppler(line):
   except ValueError:
     return None
 
+
 def read_doppler(filepath):
   import pandas as pd
 
@@ -305,7 +306,6 @@ for dataset in dop_files:
     check_times(df, df_last, file_date)
     df_last = df
 
-exit()
 
 mag_files = files('mag')
 df_last = None

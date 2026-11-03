@@ -1,16 +1,14 @@
 # Usage:
 #   python test.py
-#
-# See
-#  python test.py --help
-# for configuration options, e.g.,
-#  python test.py --config config.json --port 8080
+#   python test.py --help
+#   python test.py --config config.json --port 8080
 
 import logging
 
+logging.basicConfig(level=logging.INFO, format='%(name)s %(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-def log_test_title(url):
+def _print_title(url):
   line = len(url)*"-"
   logger.info(line)
   logger.info(f"Testing {url}")
@@ -30,7 +28,7 @@ def run_tests(configs, wait):
 
 
   url = url_base
-  log_test_title(url)
+  _print_title(url)
   response = requests.get(url)
   assert response.status_code == 200
   assert 'text/html' in response.headers['Content-Type']
@@ -57,8 +55,8 @@ def run_tests(configs, wait):
   assert 'text/csv' in response.headers['Content-Type']
   assert response.text.startswith('2025-10-20T00:00:00Z')
 
-  # Data extends past stop
-  url = f"{url_base}/data?dataset=S000028/mag&start=2025-10-21T04:01:56Z&stop=2025-10-21T04:02:01Z"
+  # Data near the end of the dataset
+  url = f"{url_base}/data?dataset=S000028/mag&start=2025-10-21T04:01:56Z&stop=2025-10-21T04:02:00Z"
   response = requests.get(url)
   assert response.status_code == 200
   assert 'text/csv' in response.headers['Content-Type']

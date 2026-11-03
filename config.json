@@ -2,15 +2,11 @@
   "path": "/hapi",
   "scripts": {
     "catalog": "$PSWS_BIN_DIR/catalog.py",
-    "info": "$PSWS_BIN_DIR/info.py",
-    "data": "$PSWS_BIN_DIR/data.py"
-  },
-  "xstream": {
-    "stderr": true,
-    "chunk_size": 1000000
+    "info": "$PSWS_BIN_DIR/info.py {dataset}",
+    "data": "$PSWS_BIN_DIR/data.py {dataset} {start} {stop} {parameters}"
   },
   "ENV": {
-    "PSWS_BIN_DIR": "bin",
+    "PSWS_BIN_DIR": "psws",
     "PSWS_DATA_DIR": "data"
   },
   "about": {

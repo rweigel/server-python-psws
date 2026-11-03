@@ -1,4 +1,4 @@
-# Usage
+# Install
 
 ```
 conda deactivate
@@ -7,29 +7,12 @@ conda create -y -n psws-python-3.11 python=3.11
 conda activate psws-python-3.11
 ```
 
-Install `server-python-general`
-
 ```
-git clone https://github.com/rweigel/server-python-general
-cd server-python-general
-pip install -e .
+git clone https://github.com/hapi-server/server-python-psws
+python -m pip install -e .
 ```
 
-Install `server-python-general-psws` plug-in
-```
-cd ../
-git clone https://github.com/rweigel/server-python-general-psws
-```
-
-Test the plug-in
-
-```
-pip install requests pandas
-cd server-python-general-psws
-python test.py --config config.json
-```
-
-Start the PSWS server
+# Run
 
 ```
 cd server-python-general-psws
@@ -40,6 +23,14 @@ For additional command-line options, see
 
 ```
 hapiserver --help
+```
+
+# Test
+
+```
+pip install requests pandas
+cd server-python-psws
+python test.py --config config.json
 ```
 
 # Development
