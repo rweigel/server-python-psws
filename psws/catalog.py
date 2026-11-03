@@ -7,24 +7,78 @@
 #   hapi/catalog
 
 DEBUG = True
+USECACHE = True
+STATION_REGEX = "^[A-Z][0-9]{6}"
+#STATION_REGEX = "N000008"
+
+# For debugging, stop processing once one of each type of data is found
+PARTIAL = True
 
 def catalog():
-  import csv
+
+  import utilrsw
+
+  catalog = _cache_read("catalog")
+  if USECACHE == True and catalog is not None:
+    return catalog
+
+  catalog_full = _cache_read("catalog.full")
+  if USECACHE == True and catalog_full is not None:
+    pass
+  else:
+    catalog_full = _catalog_full()
+    _cache_write("catalog.full", catalog_full)
+
+  if DEBUG:
+    _log("\nCatalog full:")
+    utilrsw.print_dict(catalog_full, style="json")
 
   catalog = []
-  with (_script_dir() / 'catalog.csv').open('r') as csvfile:
-    reader = csv.reader(csvfile)
-    for row in reader:
-      if row[0].startswith('#'):
-        continue
-      catalog.append({"id": row[0].strip()})
+  for station_dir in catalog_full:
+    for data_type in catalog_full[station_dir]:
+      if data_type != "dop":
+        dsid = f"{station_dir}/{data_type}"
+        catalog.append({"id": dsid})
+      else:
+        for data_subtype in catalog_full[station_dir][data_type]:
+          dsid = f"{station_dir}/{data_type}/{data_subtype}"
+          catalog.append({"id": dsid})
+
+  _cache_write("catalog", catalog)
+
   return catalog
+
+
+def _cache_read(fname):
+  import utilrsw
+  if not (_cache_dir() / f"{fname}.pkl").exists():
+    return None
+  if DEBUG:
+    _log(f"Reading {fname}.pkl")
+  return utilrsw.read(_cache_dir() / f"{fname}.pkl")
+
+
+def _cache_write(fname, data):
+  import utilrsw
+  if DEBUG:
+    _log(f"Writing {fname}.{{json,pkl}}")
+
+  for ext in ["json", "pkl"]:
+    file_path = _cache_dir() / f"{fname}.{ext}"
+    utilrsw.write(file_path, data, atomic=True)
 
 
 def _log(msg):
   if DEBUG:
     print(msg)
 
+
+def _cache_dir():
+
+  dir = _script_dir().parent / "data" / "cache"
+  if not dir.exists():
+    dir.mkdir(parents=True)
+  return dir
 
 def _script_dir():
   # Directory containing this script
@@ -86,16 +140,23 @@ def _catalog_full():
               }
             }
   """
-  import utilrsw
   from util import listdirs, listfiles
 
-  regex = "^[A-Z][0-9]{6}"
-  station_dirs = listdirs(_data_dir(), regex=regex)
-  _log(f"{len(station_dirs)} station directories (regex = {regex}) found in {_data_dir()}")
+  station_dirs = listdirs(_data_dir(), regex=STATION_REGEX)
+
+  msg = (
+    f"{len(station_dirs)} station directories "
+    f"(regex = {STATION_REGEX}) found in {_data_dir()}"
+  )
+  _log(msg)
 
   catalog = {}
+  found = {"mag": False, "dop": False, "drf": False}
 
   for station_dir in station_dirs:
+    # If all found true, break
+    if all(found.values()) and PARTIAL:
+      break
 
     _log(f"{station_dir}")
 
@@ -109,8 +170,10 @@ def _catalog_full():
         if n_files > 0:
           if dir_name == "magData":
             catalog.setdefault(station_dir, {})["mag"] = _mag_entry(files)
+            found["mag"] = True
           elif dir_name == "csvData":
             catalog.setdefault(station_dir, {})["dop"] = _dop_entry(files, dir_path)
+            found["dop"] = True
 
     for dir_prefix in ['OBS', 'G2DRF']:
       # STATION_DIR/OBS* and STATION_DIR/G2DRF* are directories containing drf data.
@@ -121,9 +184,7 @@ def _catalog_full():
         s = "y" if len(obs_dirs) == 1 else "ies"
         _log(f"  Found {len(obs_dirs)} {dir_prefix}*/ (drf) director{s}")
         catalog.setdefault(station_dir, {})[dir_prefix] = {"dirs": obs_dirs}
-
-
-  utilrsw.write("catalog.full.json", catalog)
+        found["drf"] = True
 
   return catalog
 
@@ -251,5 +312,6 @@ def _dop_entry(files, files_dir):
 
 
 if __name__ == "__main__":
-
-  _catalog_full()
+  cat = catalog()
+  _log(f"\nHAPI catalog ({len(cat)} datasets):")
+  print(cat)
