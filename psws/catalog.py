@@ -7,14 +7,14 @@
 #   hapi/catalog
 
 DEBUG = True
-USECACHE = True
+USECACHE = False
 STATION_REGEX = "^[A-Z][0-9]{6}"
-#STATION_REGEX = "N000008"
+STATION_REGEX = "N000008"
 
 # For debugging, stop processing once one of each type of data is found
 PARTIAL = True
 
-def catalog():
+def catalog(dataset=None):
 
   import utilrsw
 
@@ -38,15 +38,32 @@ def catalog():
     for data_type in catalog_full[station_dir]:
       if data_type != "dop":
         dsid = f"{station_dir}/{data_type}"
-        catalog.append({"id": dsid})
+        entry = {
+          "id": dsid,
+          "info": _info(dsid, catalog_full[station_dir][data_type])
+        }
+        catalog.append(entry)
       else:
         for data_subtype in catalog_full[station_dir][data_type]:
           dsid = f"{station_dir}/{data_type}/{data_subtype}"
-          catalog.append({"id": dsid})
+          entry = {
+            "id": dsid,
+            "info": _info(dsid, catalog_full[station_dir][data_type][data_subtype])
+          }
+          catalog.append(entry)
 
   _cache_write("catalog", catalog)
 
   return catalog
+
+def _info(dataset, entry):
+  import utilrsw
+  if dataset.split("/")[1] == "dop":
+    template = utilrsw.read(_script_dir() / "template" / "info.dop.json")
+  else:
+    template = utilrsw.read(_script_dir() / "template" / "info.mag.json")
+
+  return template
 
 
 def _cache_read(fname):
