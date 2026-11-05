@@ -11,9 +11,9 @@
 # Equivalent API response to:
 #   hapi/catalog
 
-DEBUG = False # Override with --debug CLI option
+DEBUG = False         # Override with --debug CLI option
+STATION_DIR = "/home" # Override with --station-dir CLI option
 STATION_DIR_REGEX = "^[A-Z][0-9]{6}" # Override with --station-dir-regex CLI option
-STATION_REGEX = "N000008"
 
 # For debugging, stop processing once one of each type of data is found.
 # Not a CLI option.
@@ -25,11 +25,11 @@ def catalog(dataset=None):
   import utilrsw
 
   catalog = _cache_read("catalog")
-  if _cli()["use_cache"] == True and catalog is not None:
+  if _cli()["use_cache"] and catalog is not None:
     return catalog
 
   catalog_full = _cache_read("catalog.full")
-  if _cli()["use_cache"] == True and catalog_full is not None:
+  if _cli()["use_cache"] and catalog_full is not None:
     pass
   else:
     catalog_full = _catalog_full()
@@ -38,25 +38,31 @@ def catalog(dataset=None):
   if _cli()["debug"]:
     _log("\nCatalog full:")
     utilrsw.print_dict(catalog_full, style="json")
+    _log("\n")
 
   catalog = []
   for station_dir in catalog_full:
+    geoLocation = None
     for data_type in catalog_full[station_dir]:
-      if data_type != "dop":
-        dsid = f"{station_dir}/{data_type}"
-        entry = {
-          "id": dsid,
-          "info": _info(dsid, catalog_full[station_dir][data_type])
-        }
-        catalog.append(entry)
-      else:
+      if data_type == "dop":
         for data_subtype in catalog_full[station_dir][data_type]:
           dsid = f"{station_dir}/{data_type}/{data_subtype}"
           entry = {
             "id": dsid,
             "info": _info(dsid, catalog_full[station_dir][data_type][data_subtype])
           }
+          geoLocation = entry.get("info", {}).get("geoLocation")
           catalog.append(entry)
+      else:
+        dsid = f"{station_dir}/{data_type}"
+        entry = {
+          "id": dsid,
+          "info": _info(dsid, catalog_full[station_dir][data_type])
+        }
+        if geoLocation is not None:
+          # Use geoLocation from last dop entry
+          entry["info"]["geoLocation"] = geoLocation
+        catalog.append(entry)
 
   _cache_write("catalog", catalog)
 
@@ -69,6 +75,16 @@ def _info(dataset, entry):
     template = utilrsw.read(_script_dir() / "template" / "info.dop.json")
   else:
     template = utilrsw.read(_script_dir() / "template" / "info.mag.json")
+
+  template['startDate'] = entry['startDate']
+  template['stopDate'] = entry['stopDate']
+
+  if parsed := entry.get('parsed'):
+    template['geoLocation'] = [
+      parsed['Lon'],
+      parsed['Lat'],
+      parsed['Elv']
+    ]
 
   return template
 
@@ -87,6 +103,11 @@ def _cache_write(fname, data):
   file_base = _cli()["cache_dir"] / f"{fname}"
   if fname == "catalog":
     file_base = _cli()["catalog_dir"] / f"{fname}"
+
+  if len(data) == 0:
+    _log(f"No data to write for {file_base}.{{json,pkl}}")
+    return
+
   _log(f"Writing {file_base}.{{json,pkl}}")
 
   for ext in ["json", "pkl"]:
@@ -94,7 +115,7 @@ def _cache_write(fname, data):
 
 
 def _log(msg):
-  if _cli()["cache_dir"]:
+  if _cli()["debug"]:
     print(msg)
 
 
@@ -106,10 +127,24 @@ def _script_dir():
 
 def _data_dir():
   import os
+  import sys
   import pathlib
+
+  import util
+
+  if _cli()["station_dir"] != STATION_DIR:
+    # If the station_dir CLI option is set and differs from STATION_DIR, use it.
+    data_dir = pathlib.Path(_cli()["station_dir"])
+    if not data_dir.exists():
+      sys.exit(f"Station directory {_cli()['station_dir']} does not exist.")
+    if util.listdirs(data_dir) == []:
+      sys.exit(f"Station directory {_cli()['station_dir']} is empty.")
+    return data_dir
 
   data_dir = os.getenv("PSWS_DATA_DIR")
   if data_dir is not None:
+    if not pathlib.Path(data_dir).exists():
+      sys.exit(f"PSWS_DATA_DIR is set to {data_dir} but the directory does not exist.")
     return pathlib.Path(data_dir)
 
   data_dir_alts = [
@@ -160,11 +195,11 @@ def _catalog_full():
   """
   from util import listdirs, listfiles
 
-  station_dirs = listdirs(_data_dir(), regex=STATION_REGEX)
+  station_dirs = listdirs(_data_dir(), regex=STATION_DIR_REGEX)
 
   msg = (
-    f"{len(station_dirs)} station directories "
-    f"(regex = {STATION_REGEX}) found in {_data_dir()}"
+    f"{len(station_dirs)} directories matching regex "
+    f"{STATION_DIR_REGEX} found in {_data_dir()}"
   )
   _log(msg)
 
@@ -179,6 +214,9 @@ def _catalog_full():
     _log(f"{station_dir}")
 
     for dir_name in ["csvData", "magData"]:
+      data_type = "dop" if dir_name == "csvData" else "mag"
+      if PARTIAL and found[data_type]:
+        continue
       # STATION_DIR/csvData contains all doppler files
       # STATION_DIR/magData contains all magnetometer files
       dir_path = _data_dir() / station_dir / dir_name
@@ -194,6 +232,8 @@ def _catalog_full():
             found["dop"] = True
 
     for dir_prefix in ['OBS', 'G2DRF']:
+      if PARTIAL and found["drf"]:
+        break
       # STATION_DIR/OBS* and STATION_DIR/G2DRF* are directories containing drf data.
       # Warning: drf.py only looks for OBS and stops if found, so G2DRF* is ignored.
       # This is not done here.
@@ -340,7 +380,7 @@ def _cli():
   )
   parser.add_argument(
       '--station-dir',
-      default='/home',
+      default=STATION_DIR,
       required=False,
       dest='station_dir',
       help='Directory containing station subdirectories (e.g., S0000183, N000020).'
@@ -400,4 +440,5 @@ def _cli():
 if __name__ == "__main__":
   cat = catalog()
   _log(f"\nHAPI catalog ({len(cat)} datasets):")
-  print(cat)
+  import json
+  print(json.dumps(cat, indent=2))

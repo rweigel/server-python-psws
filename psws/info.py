@@ -15,9 +15,6 @@ import csv
 import json
 from pathlib import Path
 
-# Get PSWS_DATA_DIR from environment variable
-#PSWS_DATA_DIR = os.getenv("PSWS_DATA_DIR")
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 def get_catalog():

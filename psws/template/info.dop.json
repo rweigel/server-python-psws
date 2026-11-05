@@ -1,14 +1,12 @@
 {
   "startDate": null,
   "stopDate": null,
-  "timeStampLocation": "?begin",
   "cadence": "PT1S",
   "maxRequestDuration": "P30D",
   "description": "",
   "resourceURL": "https://pswsnetwork.eng.ua.edu/",
   "citation": "https://pswsnetwork.eng.ua.edu/",
   "contact": "bill.engelke@ua.edu",
-  "geoLocation": null,
   "parameters": [
     {
       "name": "Time",
