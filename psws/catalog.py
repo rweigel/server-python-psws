@@ -75,20 +75,22 @@ def _info(dataset, entry):
 
 def _cache_read(fname):
   import utilrsw
-  if not (_cli()["cache_dir"] / f"{fname}.pkl").exists():
+  cache_file = _cli()["cache_dir"] / f"{fname}.pkl"
+  if not cache_file.exists():
     return None
-  _log(f"Reading {fname}.pkl")
-  return utilrsw.read(_cli()["cache_dir"] / f"{fname}.pkl")
+  _log(f"Reading {cache_file}")
+  return utilrsw.read(cache_file)
 
 
 def _cache_write(fname, data):
   import utilrsw
-
-  _log(f"Writing {fname}.{{json,pkl}}")
+  file_base = _cli()["cache_dir"] / f"{fname}"
+  if fname == "catalog":
+    file_base = _cli()["catalog_dir"] / f"{fname}"
+  _log(f"Writing {file_base}.{{json,pkl}}")
 
   for ext in ["json", "pkl"]:
-    file_path = _cli()["cache_dir"] / f"{fname}.{ext}"
-    utilrsw.write(file_path, data, atomic=True)
+    utilrsw.write(file_base.with_suffix(f".{ext}"), data, atomic=True)
 
 
 def _log(msg):
@@ -365,19 +367,19 @@ def _cli():
 
   base_dir = _script_dir()
   cache_dir = base_dir / "data" / "cache"
-  log_dir = os.path.join(base_dir, "data", "log")
-  catalog_dir = os.path.join(base_dir, "data", "hapi")
+  log_dir = base_dir / "data" / "log"
+  catalog_dir = base_dir / "data" / "hapi"
 
   parser.add_argument(
       '--cache-dir', type=Path, default=cache_dir, dest='cache_dir',
       help=f'Directory to use for caching sample data. Default is {cache_dir}.'
   )
   parser.add_argument(
-      '--log-dir', type=str, default=log_dir, dest='log_dir',
+      '--log-dir', type=Path, default=log_dir, dest='log_dir',
       help=f'Directory to use for log files. Default is {log_dir}.'
   )
   parser.add_argument(
-      '--catalog-dir', type=str, default=catalog_dir, dest='catalog_dir',
+      '--catalog-dir', type=Path, default=catalog_dir, dest='catalog_dir',
       help=f'Directory to write hapi catalog. Default is {catalog_dir}.'
   )
 
@@ -393,6 +395,7 @@ def _cli():
     raise SystemExit(f"Invalid --station-dir-regex: {error}")
 
   return vars(args)
+
 
 if __name__ == "__main__":
   cat = catalog()
