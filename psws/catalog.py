@@ -1,35 +1,41 @@
 # Usage:
+# Print HAPI catalog information to stdout
 #   python catalog.py
 #
-# Prints HAPI catalog information from catalog.csv in JSON format to stdout
+# Debugging - specify a single station and enable debug output:
+#   python catalog.py --station N000008 --debug
+#
+# Details on options
+#   python catalog.py --help
 #
 # Equivalent API response to:
 #   hapi/catalog
 
-DEBUG = True
-USECACHE = False
-STATION_REGEX = "^[A-Z][0-9]{6}"
+DEBUG = False # Override with --debug CLI option
+STATION_DIR_REGEX = "^[A-Z][0-9]{6}" # Override with --station-dir-regex CLI option
 STATION_REGEX = "N000008"
 
-# For debugging, stop processing once one of each type of data is found
+# For debugging, stop processing once one of each type of data is found.
+# Not a CLI option.
 PARTIAL = True
+
 
 def catalog(dataset=None):
 
   import utilrsw
 
   catalog = _cache_read("catalog")
-  if USECACHE == True and catalog is not None:
+  if _cli()["use_cache"] == True and catalog is not None:
     return catalog
 
   catalog_full = _cache_read("catalog.full")
-  if USECACHE == True and catalog_full is not None:
+  if _cli()["use_cache"] == True and catalog_full is not None:
     pass
   else:
     catalog_full = _catalog_full()
     _cache_write("catalog.full", catalog_full)
 
-  if DEBUG:
+  if _cli()["debug"]:
     _log("\nCatalog full:")
     utilrsw.print_dict(catalog_full, style="json")
 
@@ -56,6 +62,7 @@ def catalog(dataset=None):
 
   return catalog
 
+
 def _info(dataset, entry):
   import utilrsw
   if dataset.split("/")[1] == "dop":
@@ -68,34 +75,26 @@ def _info(dataset, entry):
 
 def _cache_read(fname):
   import utilrsw
-  if not (_cache_dir() / f"{fname}.pkl").exists():
+  if not (_cli()["cache_dir"] / f"{fname}.pkl").exists():
     return None
-  if DEBUG:
-    _log(f"Reading {fname}.pkl")
-  return utilrsw.read(_cache_dir() / f"{fname}.pkl")
+  _log(f"Reading {fname}.pkl")
+  return utilrsw.read(_cli()["cache_dir"] / f"{fname}.pkl")
 
 
 def _cache_write(fname, data):
   import utilrsw
-  if DEBUG:
-    _log(f"Writing {fname}.{{json,pkl}}")
+
+  _log(f"Writing {fname}.{{json,pkl}}")
 
   for ext in ["json", "pkl"]:
-    file_path = _cache_dir() / f"{fname}.{ext}"
+    file_path = _cli()["cache_dir"] / f"{fname}.{ext}"
     utilrsw.write(file_path, data, atomic=True)
 
 
 def _log(msg):
-  if DEBUG:
+  if _cli()["cache_dir"]:
     print(msg)
 
-
-def _cache_dir():
-
-  dir = _script_dir().parent / "data" / "cache"
-  if not dir.exists():
-    dir.mkdir(parents=True)
-  return dir
 
 def _script_dir():
   # Directory containing this script
@@ -327,6 +326,73 @@ def _dop_entry(files, files_dir):
 
   return entry
 
+
+def _cli():
+  import os
+  import re
+  import argparse
+  from pathlib import Path
+
+  parser = argparse.ArgumentParser(
+      description='Read Digital RF data from PSWS station directories.'
+  )
+  parser.add_argument(
+      '--station-dir',
+      default='/home',
+      required=False,
+      dest='station_dir',
+      help='Directory containing station subdirectories (e.g., S0000183, N000020).'
+  )
+  parser.add_argument(
+      '--station-dir-regex',
+      default=STATION_DIR_REGEX,
+      required=False,
+      dest='station_dir_regex',
+      help='Regex pattern that must match the entire station subdirectory name. Use .* to match any directory name.'
+  )
+  parser.add_argument(
+      '--station', default=None,
+      help='Only process this station subdirectory.'
+  )
+  parser.add_argument(
+      '--debug', action='store_true', dest='debug',
+      help='Enable debug mode.'
+  )
+  parser.add_argument(
+      '--use-cache', action='store_true', dest='use_cache',
+      help='Use any cached sample metadata and data if available.'
+  )
+
+  base_dir = _script_dir()
+  cache_dir = base_dir / "data" / "cache"
+  log_dir = os.path.join(base_dir, "data", "log")
+  catalog_dir = os.path.join(base_dir, "data", "hapi")
+
+  parser.add_argument(
+      '--cache-dir', type=Path, default=cache_dir, dest='cache_dir',
+      help=f'Directory to use for caching sample data. Default is {cache_dir}.'
+  )
+  parser.add_argument(
+      '--log-dir', type=str, default=log_dir, dest='log_dir',
+      help=f'Directory to use for log files. Default is {log_dir}.'
+  )
+  parser.add_argument(
+      '--catalog-dir', type=str, default=catalog_dir, dest='catalog_dir',
+      help=f'Directory to write hapi catalog. Default is {catalog_dir}.'
+  )
+
+  for dir in [cache_dir, log_dir, catalog_dir]:
+    if not os.path.exists(dir):
+      os.makedirs(dir, exist_ok=True)
+
+  args = parser.parse_args()
+
+  try:
+    re.compile(args.station_dir_regex)
+  except re.error as error:
+    raise SystemExit(f"Invalid --station-dir-regex: {error}")
+
+  return vars(args)
 
 if __name__ == "__main__":
   cat = catalog()
