@@ -1,16 +1,16 @@
-# Usage:
-#   python info.py --dataset <id>
-# where <id> is the station ID, e.g., S000028 found in first column of catalog.csv
-#
-# Examples:
-#   python info.py --dataset S000028/mag
-#   python info.py -d N000001/dop/WWV5
+"""
+Returns HAPI info JSON stdout
 
-# Returns HAPI info JSON stdout
-#
-# Equivalent API response to:
-#   hapi/info?dataset=<id>
+Equivalent API response to:
+  hapi/info?dataset=<id>
 
+Command-line usage:
+
+  Print HAPI info for dataset to stdout
+    python info.py --dataset S000028/mag
+  See also
+    python info.py --help
+"""
 
 def info(dataset):
   from catalog import catalog

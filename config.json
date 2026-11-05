@@ -2,12 +2,13 @@
   "path": "/hapi",
   "scripts": {
     "catalog": "$PSWS_BIN_DIR/catalog.py",
-    "info": "$PSWS_BIN_DIR/info.py {dataset}",
+    "info": "$PSWS_BIN_DIR/info.py --dataset {dataset}",
     "data": "$PSWS_BIN_DIR/data.py {dataset} {start} {stop} {parameters}"
   },
   "ENV": {
     "PSWS_BIN_DIR": "psws",
-    "PSWS_DATA_DIR": "/Users/rweigel/sshfs/psws"
+    "PSWS_DATA_DIR": "/Users/rweigel/git/hapi/server-python-psws/data",
+    "xPSWS_DATA_DIR": "/Users/rweigel/sshfs/psws"
   },
   "about": {
     "id": "PSWS",
