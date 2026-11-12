@@ -1,21 +1,22 @@
 # Install
 
 ```
-conda deactivate
-conda env remove -y -n psws-python-3.11
-conda create -y -n psws-python-3.11 python=3.11
-conda activate psws-python-3.11
-```
-
-```
 git clone https://github.com/hapi-server/server-python-psws
+cd server-python-psws
 python -m pip install -e .
 ```
 
 # Run
 
+Edit the `PSWS_DATA_DIR` variable in `config.json` to point to the root directory of data. See `etc/sshmnt.sh` for mounting the PSWS data directory using a SSH filesystem.
+
+Create or update catalog. This will take a few minutes.
+
 ```
-cd server-python-general-psws
+python psws/catalog.py
+```
+
+```
 hapiserver --config config.json
 ```
 
@@ -27,32 +28,30 @@ hapiserver --help
 
 # Test
 
+## Without Pytest
+
 ```
-pip install requests pandas
 cd server-python-psws
-python test.py --config config.json
+python -m pip install -e ".[test]"
+python test/test_server.py
+```
+
+## With Pytest
+
+Test the first magnetometer and Doppler datasets:
+
+```
+pytest
+# or
+python -m pytest -v --log-cli-level=INFO
+```
+
+Test all magnetometer and Doppler datasets:
+
+```
+python -m pytest -m full -v --log-cli-level=INFO
 ```
 
 # Development
 
-Assumes magnetometer data in directories as under `data/` - each subdir corresponds to data from a station with ID in `catalog.csv`.
-
-The responses to HAPI endpoints are implemented as Python scripts that return the response to `stdout`.
-
-Return response to `/hapi/catalog` request
-
-```
-python bin/catalog.py
-```
-
-Return response to `/hapi/info` request
-
-```
-python bin/info.py S000028
-```
-
-Return response to `/hapi/data` request
-
-```
-python bin/data.py W2NAF 2025-10-20 2025-10-21
-```
+See the comments in `psws/catalog.py`, `psws/info.py`, and `psws/data.py` for examples of testing responses on command line.

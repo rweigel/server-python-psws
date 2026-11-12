@@ -25,3 +25,9 @@ packages = ["psws"]
 
 [tool.setuptools.package-data]
 psws = ["*.json"]
+
+[tool.pytest.ini_options]
+addopts = "-m 'not full'"
+markers = [
+  "full: test all datasets instead of the first dataset per type"
+]

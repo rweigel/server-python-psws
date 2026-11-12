@@ -1,11 +1,9 @@
 # Usage:
-#   python test_all.py
-#
-# Using Pytest:
 #   Short test (first magnetometer and Doppler datasets):
-#     python -m pytest test/test_all.py::test_short -v --log-cli-level=INFO
-#   Full test:
-#     python -m pytest test/test_all.py::test_all -v --log-cli-level=INFO
+#     python test/test_server.py
+#
+# Using Pytest (short test):
+#   python -m pytest test/test_server.py -v --log-cli-level=INFO
 
 import logging
 
@@ -20,12 +18,8 @@ def _print_title(url):
   logger.info(line)
 
 
-def test_short():
-  test_all(short=True)
-
-
-def test_all(short=False):
-
+def test_server(short=True):
+  # Test /info and /data for the first dataset per type, or all datasets.
   import pathlib
 
   import hapiserver
@@ -39,6 +33,7 @@ def test_all(short=False):
 
   _run(configs, 'mag', wait, short=short)
   _run(configs, 'dop', wait, short=short)
+  #_run(configs, 'drf', wait, short=short)
 
 
 def _run(configs, data_type, wait, short=False):
@@ -51,7 +46,7 @@ def _run(configs, data_type, wait, short=False):
 
   wait['url'] = url_base
 
-  utilrsw.uvicorn.start('hapiserver.app', configs, wait)
+  proc = utilrsw.uvicorn.start('hapiserver.app', configs, wait)
 
   url = url_base
   _print_title(url)
@@ -107,8 +102,10 @@ def _run(configs, data_type, wait, short=False):
     if short:
       break
 
+
+  utilrsw.uvicorn.stop(proc)
+
+
 if __name__ == "__main__":
-  #test_all()
   test_short()
-  #_run(configs, 'mag', wait)
-  #_run(configs, 'dop', wait)
+
