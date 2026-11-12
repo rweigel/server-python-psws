@@ -41,15 +41,6 @@
     {
       "name": "rtlt",
       "type": "double",
-      "size": [3],
-      "units": "?",
-      "label": ["rt", "lt"],
-      "description": "?",
-      "fill": "99999.0"
-    },
-    {
-      "name": "rtlt",
-      "type": "double",
       "size": [2],
       "units": null,
       "label": ["rt", "lt"],

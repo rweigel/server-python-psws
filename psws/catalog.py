@@ -1,52 +1,66 @@
 # Usage:
 # Print HAPI catalog information to stdout
 #   python catalog.py
-#
-# Debugging - specify a single station and enable debug output:
-#   python catalog.py --station N000008 --debug
-#
 # Details on options
 #   python catalog.py --help
+#
+# Debugging
+#   Specify a single station and enable debug output:
+#     python catalog.py --station N000008 --debug
+#   Change default root directory from /home
+#   python catalog.py --station-dir ~/sshfs/psws --debug
+#
 #
 # Equivalent API response to:
 #   hapi/catalog
 
 import util
 
-DEBUG = False         # Override with --debug CLI option
-STATION_DIR = "/home" # Override with --station-dir CLI option
-STATION_DIR_REGEX = "^[A-Z][0-9]{6}" # Override with --station-dir-regex CLI option
-
-
 def catalog(dataset=None):
+  options = util.cli()
 
-  import utilrsw
+  regex = options["station_dir_regex"] != util.STATION_DIR_REGEX
+  restricted = options["station"] is not None or regex
 
-  catalog = _cache_read("catalog")
-  if util.cli()["use_cache"] and catalog is not None:
-    if dataset is not None:
-      catalog = [entry for entry in catalog if entry["id"] == dataset]
-    return catalog
+  catalog_full = None
+  if options["use_cache"]:
+    catalog = _cache_read("catalog")
+    if catalog is not None:
+      return _catalog_filter(catalog, dataset=dataset, options=options)
 
-  catalog_full = _cache_read("catalog.full")
-  if util.cli()["use_cache"] and catalog_full is not None:
-    pass
-  else:
+    catalog_full = _cache_read("catalog.full")
+
+  if catalog_full is None:
     catalog_full = _catalog_full()
-    _cache_write("catalog.full", catalog_full)
+    if not restricted:
+      _cache_write("catalog.full", catalog_full)
+
+  catalog_full = _catalog_filter(catalog_full, dataset=dataset, options=options)
 
   if util.cli()["debug"]:
-    _log("\nCatalog full:")
-    utilrsw.print_dict(catalog_full, style="json")
-    _log("\n")
+    import json
+    util.log("\nCatalog full:")
+    util.log(json.dumps(catalog_full, indent=2))
+    util.log("\n")
 
   catalog = []
   for station_dir in catalog_full:
+
     geoLocation = None
+    if dataset is not None:
+      for doppler_entry in catalog_full[station_dir].get("dop", {}).values():
+        parsed = doppler_entry.get("parsed")
+        if isinstance(parsed, dict) and all(key in parsed for key in ("Lon", "Lat", "Elv")):
+          geoLocation = [parsed["Lon"], parsed["Lat"], parsed["Elv"]]
+
     for data_type in catalog_full[station_dir]:
+      if data_type not in ("dop", "mag"):
+        continue
       if data_type == "dop":
         for data_subtype in catalog_full[station_dir][data_type]:
           dsid = f"{station_dir}/{data_type}/{data_subtype}"
+          if dataset is not None and dsid != dataset:
+            continue
           entry = {
             "id": dsid,
             "info": _info(dsid, catalog_full[station_dir][data_type][data_subtype])
@@ -55,6 +69,8 @@ def catalog(dataset=None):
           catalog.append(entry)
       else:
         dsid = f"{station_dir}/{data_type}"
+        if dataset is not None and dsid != dataset:
+          continue
         entry = {
           "id": dsid,
           "info": _info(dsid, catalog_full[station_dir][data_type])
@@ -65,100 +81,120 @@ def catalog(dataset=None):
         catalog.append(entry)
 
   if dataset is not None:
-    _log(entry["id"] )
-    return [entry for entry in catalog if entry["id"] == dataset]
+    matches = _catalog_filter(catalog, dataset=dataset, options=options)
+    if not matches:
+      util.log(f"Dataset {dataset} not found in catalog.")
+    return matches
 
-  _cache_write("catalog", catalog)
+  if not restricted:
+    _cache_write("catalog", catalog)
 
   return catalog
 
 
+def _catalog_filter(catalog, dataset=None, options=None):
+  """Filter public entries or full station metadata by CLI selection."""
+  import re
+
+  if options is None:
+    options = util.cli()
+  station_pattern = re.compile(options["station_dir_regex"])
+
+  def station_selected(station):
+    return station_pattern.fullmatch(station) is not None and (
+      options["station"] is None or station == options["station"]
+    ) and (dataset is None or station == dataset.split("/")[0])
+
+  if isinstance(catalog, dict):
+    return {station: entry for station, entry in catalog.items() if station_selected(station)}
+  return [
+    entry for entry in catalog
+    if station_selected(entry["id"].split("/")[0])
+    and (dataset is None or entry["id"] == dataset)
+  ]
+
+
 def _info(dataset, entry):
+  import pathlib
+
   import utilrsw
-  if dataset.split("/")[1] == "dop":
-    template = utilrsw.read(_script_dir() / "template" / "info.dop.json")
-  else:
-    template = utilrsw.read(_script_dir() / "template" / "info.mag.json")
 
-  template['startDate'] = entry['startDate']
-  template['stopDate'] = entry['stopDate']
+  script_dir = pathlib.Path(__file__).resolve().parent
+  data_type = dataset.split("/")[1]
+  if data_type not in ("dop", "mag"):
+    raise util.Error(f"Info metadata is not implemented for dataset {dataset}.")
+  template_path = script_dir / "template" / f"info.{data_type}.json"
+  try:
+    template = utilrsw.read(template_path)
+    template['startDate'] = entry['startDate']
+    template['stopDate'] = entry['stopDate']
+    if parsed := entry.get('parsed'):
+      if not isinstance(parsed, dict):
+        raise ValueError("parsed metadata must be a dictionary")
+      template['geoLocation'] = [parsed['Lon'], parsed['Lat'], parsed['Elv']]
+    if columns := entry.get('columns'):
+      if not isinstance(columns, list):
+        raise ValueError("columns metadata must be a list")
+      columns = columns.split(",")[1:]
+      for i, col in enumerate(columns):
+        columns[i] = col.strip()
+        template['parameters'][i]['name'] = col
 
-  if parsed := entry.get('parsed'):
-    template['geoLocation'] = [
-      parsed['Lon'],
-      parsed['Lat'],
-      parsed['Elv']
-    ]
+  except (OSError, ValueError, KeyError, TypeError) as error:
+    msg = f"Failed to build info for {dataset} using {template_path}: {error}"
+    raise util.Error(msg) from error
 
   return template
 
 
 def _cache_read(fname):
+  import pickle
+
   import utilrsw
-  cache_file = util.cli()["cache_dir"] / f"{fname}.pkl"
+
+  options = util.cli()
+  directory = options["catalog_dir"] if fname == "catalog" else options["cache_dir"]
+  cache_file = directory / f"{fname}.pkl"
   if not cache_file.exists():
     return None
-  _log(f"Reading {cache_file}")
-  return utilrsw.read(cache_file)
+
+  util.log(f"Reading {cache_file}")
+  try:
+    data = utilrsw.read(cache_file)
+  except (OSError, ValueError, EOFError, pickle.UnpicklingError, ImportError, AttributeError) as error:
+    msg = f"Failed to read cache {cache_file}: {error}. Retry without --use-cache."
+    raise util.Error(msg) from error
+  if fname == "catalog":
+    valid = isinstance(data, list) and all(
+      isinstance(entry, dict) and isinstance(entry.get("id"), str) and isinstance(entry.get("info"), dict)
+      for entry in data
+    )
+  else:
+    valid = isinstance(data, dict) and all(isinstance(entry, dict) for entry in data.values())
+  if not valid:
+    raise util.Error(f"Invalid cache structure in {cache_file}. Retry without --use-cache.")
+  return data
 
 
 def _cache_write(fname, data):
+  import sys
+  from contextlib import redirect_stdout
+
   import utilrsw
   file_base = util.cli()["cache_dir"] / f"{fname}"
   if fname == "catalog":
     file_base = util.cli()["catalog_dir"] / f"{fname}"
 
-  if len(data) == 0:
-    _log(f"No data to write for {file_base}.{{json,pkl}}")
-    return
-
-  _log(f"Writing {file_base}.{{json,pkl}}")
+  util.log(f"Writing {file_base}.{{json,pkl}}")
 
   for ext in ["json", "pkl"]:
-    utilrsw.write(file_base.with_suffix(f".{ext}"), data, atomic=True)
-
-
-def _log(msg):
-  if util.cli()["debug"]:
-    print(msg)
-
-
-def _script_dir():
-  # Directory containing this script
-  import pathlib
-  return pathlib.Path(__file__).resolve().parent
-
-
-def _data_dir():
-  import os
-  import sys
-  import pathlib
-
-  import util
-
-  if util.cli()["station_dir"] != STATION_DIR:
-    # If the station_dir CLI option is set and differs from STATION_DIR, use it.
-    data_dir = pathlib.Path(util.cli()["station_dir"])
-    if not data_dir.exists():
-      sys.exit(f"Station directory {util.cli()['station_dir']} does not exist.")
-    if util.listdirs(data_dir) == []:
-      sys.exit(f"Station directory {util.cli()['station_dir']} is empty.")
-    return data_dir
-
-  data_dir = os.getenv("PSWS_DATA_DIR")
-  if data_dir is not None:
-    if not pathlib.Path(data_dir).exists():
-      sys.exit(f"PSWS_DATA_DIR is set to {data_dir} but the directory does not exist.")
-    return pathlib.Path(data_dir)
-
-  data_dir_alts = [
-    pathlib.Path("~/sshfs/psws").expanduser(),
-    _script_dir().parent / "data"
-  ]
-
-  for data_dir_alt in data_dir_alts:
-    if data_dir_alt.exists() and data_dir_alt.is_dir():
-      return data_dir_alt
+    file_path = file_base.parent / f"{file_base.name}.{ext}"
+    try:
+      file_path.parent.mkdir(parents=True, exist_ok=True)
+      with redirect_stdout(sys.stderr):
+        utilrsw.write(file_path, data, atomic=True)
+    except (OSError, ValueError, TypeError) as error:
+      raise util.Error(f"Failed to write cache {file_path}: {error}") from error
 
 
 def _catalog_full():
@@ -199,43 +235,79 @@ def _catalog_full():
   """
   from util import listdirs, listfiles
 
-  station_dirs = listdirs(_data_dir(), regex=STATION_DIR_REGEX)
+  options = util.cli()
+  util.validate_station_dir(options['station_dir'])
+  station_dirs = listdirs(options['station_dir'], regex=options['station_dir_regex'])
+  if options["station"] is not None:
+    station_dirs = [station for station in station_dirs if station == options["station"]]
+  if not station_dirs:
+    raise util.Error(f"No matching station directories found in {options['station_dir']}.")
 
   msg = (
     f"{len(station_dirs)} directories matching regex "
-    f"{STATION_DIR_REGEX} found in {_data_dir()}"
+    f"{options['station_dir_regex']} found in {options['station_dir']}"
   )
-  _log(msg)
+  util.log(msg)
 
   catalog = {}
 
   for station_dir in station_dirs:
-    _log(f"{station_dir}")
+    util.log(f"{station_dir}")
 
     for dir_name in ["csvData", "magData"]:
       # STATION_DIR/csvData contains all doppler files
       # STATION_DIR/magData contains all magnetometer files
-      dir_path = _data_dir() / station_dir / dir_name
+      dir_path = util.cli()['station_dir'] / station_dir / dir_name
       if dir_path.exists() and dir_path.is_dir():
         files = listfiles(dir_path)
         n_files = len(files)
         if n_files > 0:
           if dir_name == "magData":
-            catalog.setdefault(station_dir, {})["mag"] = _mag_entry(files)
+            entry = _mag_entry(files)
+            if entry is not None:
+              catalog.setdefault(station_dir, {})["mag"] = entry
           elif dir_name == "csvData":
-            catalog.setdefault(station_dir, {})["dop"] = _dop_entry(files, dir_path)
+            entry = _dop_entry(files, dir_path)
+            if entry:
+              catalog.setdefault(station_dir, {})["dop"] = entry
 
     for dir_prefix in ['OBS', 'G2DRF']:
       # STATION_DIR/OBS* and STATION_DIR/G2DRF* are directories containing drf data.
       # Warning: drf.py only looks for OBS and stops if found, so G2DRF* is ignored.
       # This is not done here.
-      obs_dirs = listdirs(_data_dir() / station_dir, regex=f"^{dir_prefix}.*")
+      obs_dirs = listdirs(util.cli()['station_dir'] / station_dir, regex=f"^{dir_prefix}.*")
       if len(obs_dirs) > 0:
         s = "y" if len(obs_dirs) == 1 else "ies"
-        _log(f"  Found {len(obs_dirs)} {dir_prefix}*/ (drf) director{s}")
+        util.log(f"  Found {len(obs_dirs)} {dir_prefix}*/ (drf) director{s}")
         catalog.setdefault(station_dir, {})[dir_prefix] = {"dirs": obs_dirs}
 
   return catalog
+
+
+def _file_date_range(files, offset=0):
+  """Determine start and stop dates from file names."""
+  from datetime import date, timedelta
+
+  valid_files = []
+  dates = []
+  for file_name in files:
+    try:
+      file_date = date.fromisoformat(file_name[offset:offset + 10])
+      file_date = file_date + timedelta(days=1)
+    except (ValueError, OverflowError) as error:
+      util.log(f"    Skipping file {file_name}: cannot parse date in filename: {error}")
+      continue
+    valid_files.append(file_name)
+    dates.append(file_date)
+
+  files[:] = valid_files
+  if not dates:
+    return None
+
+  start = min(dates)
+  stop = max(dates) + timedelta(days=1)
+
+  return f"{start.isoformat()}T00:00:00Z", f"{stop.isoformat()}T00:00:00Z"
 
 
 def _mag_entry(files):
@@ -247,14 +319,21 @@ def _mag_entry(files):
   Returns:
     dict: Entry containing 'files', 'startDate', and 'stopDate'.
   """
+  if not files:
+    raise util.Error("Cannot build magnetometer metadata from an empty file list.")
+  files = sorted(files)
+  util.log(f"  Found magData/ (magnetometer) with {len(files)} files")
+  bounds = _file_date_range(files, offset=3)
+  if bounds is None:
+    return None
+  start_date, stop_date = bounds
   entry = {
-            "startDate": files[0][3:13],
-            "stopDate": files[-1][3:13],
+            "startDate": start_date,
+            "stopDate": stop_date,
             "files": files
           }
-  _log(f"  Found magData/ (magnetometer) with {len(files)} files")
-  _log(f"    Start date: {entry['startDate']}")
-  _log(f"    Stop date:  {entry['stopDate']}")
+  util.log(f"    Start date: {entry['startDate']}")
+  util.log(f"    Stop date:  {entry['stopDate']}")
   return entry
 
 
@@ -300,15 +379,24 @@ def _dop_metadata(file_name, file_dir):
     ######################################################
   """
   header = []
+  columns = []
   file_name = file_dir / file_name
   with open(file_name, 'r') as f:
     for line in f:
       if not line.startswith('#'):
+        # Last line before the actual data, contains column headers
+        columns = line.strip()
         break
       header.append(line.strip())
 
   parsed = header[0].lstrip('#').strip() if header else None
-  parsed = parsed.split(',') if parsed else None
+  if parsed:
+    import csv
+    parsed = next(csv.reader([parsed]))
+  else:
+    parsed = None
+  if parsed and len(parsed) < 10:
+    raise util.Error(f"Invalid doppler header in {file_name}: expected at least 10 fields.")
   if parsed and len(parsed) >= 10:
     parsed = {
       "Grid Square": parsed[3],
@@ -321,7 +409,7 @@ def _dop_metadata(file_name, file_dir):
     }
   header = "\n".join(header)
 
-  return header, parsed
+  return header, parsed, columns
 
 
 def _dop_entry(files, files_dir):
@@ -334,6 +422,9 @@ def _dop_entry(files, files_dir):
   Returns:
     dict: Entry containing 'files', 'startDate', 'stopDate', 'header', and 'parsed'.
   """
+  if not files:
+    raise util.Error("Cannot build doppler metadata from an empty file list.")
+  files = sorted(files)
   entry = {}
   unique_suffixes = {file_name.split("_")[-1].replace(".csv", "") for file_name in files}
 
@@ -344,26 +435,41 @@ def _dop_entry(files, files_dir):
 
   for suffix in unique_suffixes:
     files = entry[suffix]["files"]
-    entry[suffix]["startDate"] = files[0][0:10]
-    entry[suffix]["stopDate"] = files[-1][0:10]
-    header, parsed = _dop_metadata(files[0], files_dir)
+    bounds = _file_date_range(files)
+    if bounds is None:
+      del entry[suffix]
+      continue
+    start_date, stop_date = bounds
+    entry[suffix]["startDate"] = start_date
+    entry[suffix]["stopDate"] = stop_date
+    try:
+      header, parsed, columns = _dop_metadata(files[0], files_dir)
+    except (OSError, ValueError, TypeError) as error:
+      raise util.Error(f"Failed to read doppler metadata from {files_dir / files[0]}: {error}") from error
+
     entry[suffix]["header"] = header
+    entry[suffix]["columns"] = columns
     entry[suffix]["parsed"] = parsed
-    _log(f"  Found csvData/ (doppler) with {len(files)} files ending with _{suffix}.csv")
-    _log(f"    Start date: {entry[suffix]['startDate']}")
-    _log(f"    Stop date:  {entry[suffix]['stopDate']}")
+
+    util.log(f"  Found csvData/ (doppler) with {len(files)} files ending with _{suffix}.csv")
+    util.log(f"    Start date: {entry[suffix]['startDate']}")
+    util.log(f"    Stop date:  {entry[suffix]['stopDate']}")
 
   # Put `files` at end of dict
-  for suffix in unique_suffixes:
-    entry[suffix]["files"] = entry[suffix].pop("files")
+  for suffix_entry in entry.values():
+    suffix_entry["files"] = suffix_entry.pop("files")
 
   return entry
 
 
-
-
 if __name__ == "__main__":
-  cat = catalog()
-  _log(f"\nHAPI catalog ({len(cat)} datasets):")
   import json
-  print(json.dumps(cat, indent=2))
+
+  try:
+    cat = catalog(dataset=util.cli()["dataset"])
+    util.log(f"\nHAPI catalog ({len(cat)} datasets):")
+    output = json.dumps(cat, indent=2)
+  except (util.Error, OSError, ValueError) as error:
+    raise SystemExit(str(error)) from None
+
+  print(output)

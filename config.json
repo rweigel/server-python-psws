@@ -1,14 +1,16 @@
 {
   "path": "/hapi",
   "scripts": {
-    "catalog": "$PSWS_BIN_DIR/catalog.py",
-    "info": "$PSWS_BIN_DIR/info.py --dataset {dataset}",
-    "data": "$PSWS_BIN_DIR/data.py {dataset} {start} {stop} {parameters}"
+    "catalog": "$PSWS_BIN_DIR/catalog.py --use-cache",
+    "info": "$PSWS_BIN_DIR/info.py --use-cache --dataset {dataset}",
+    "data": "$PSWS_BIN_DIR/data.py --dataset {dataset} --start {start} --stop {stop} --parameters {parameters}"
   },
   "ENV": {
     "PSWS_BIN_DIR": "psws",
-    "PSWS_DATA_DIR": "/Users/rweigel/git/hapi/server-python-psws/data",
-    "xPSWS_DATA_DIR": "/Users/rweigel/sshfs/psws"
+    "PSWS_CACHE_DIR": "/Users/rweigel/git/hapi/server-python-psws/data",
+    "xPSWS_DATA_DIR": "/Users/rweigel/git/hapi/server-python-psws/data",
+    "PSWS_DATA_DIR": "/Users/rweigel/sshfs/psws",
+    "xPSWS_DATA_DIR": "/home"
   },
   "about": {
     "id": "PSWS",

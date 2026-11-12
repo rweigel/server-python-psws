@@ -1,6 +1,6 @@
 # Usage:
-#   python data.py <id> <start> <stop>
-#   python data.py <id> <start> <stop> <parameters>
+#   python data.py --dataset <id> --start <start> --stop <stop>
+#   python data.py --dataset <id> --start <start> --stop <stop> --parameters <parameters>
 #
 # <id> is the station ID, e.g., S000028 found in first column of catalog.csv
 # <start> and <stop> are 20-character HAPI ISO date strings, e.g.,
@@ -12,51 +12,37 @@
 #
 # Examples:
 #
-#  python data.py S000028/mag 2025-10-20T00:00:00Z 2025-10-21T00:00:00Z
-#  python data.py S000028/mag 2025-10-20T00:00:00Z 2025-10-29T00:00:00Z
-#  python data.py S000001/mag 2022-07-08T00:00:00Z 2022-07-09T00:00:00Z
-#  python data.py S000001/doppler 2020-08-07T00:00:00Z 2022-08-08T00:00:00Z
-#  python data.py N000001/doppler 2019-05-24T00:00:00Z 2019-05-25T23:59:59Z
+#  python data.py --dataset S000003/mag --start 2026-08-19T00:00:00.000000Z --stop 2026-08-20T00:00:00.000000Z
+#  python data.py --dataset S000003/mag --parameters Field_Vector --start 2026-08-19T00:00:00.000000Z --stop 2026-08-20T00:00:00.000000Z
 #
-#  python data.py S000028/mag 2025-10-20T00:00:00Z 2025-10-21T00:00:00Z Field_Vector
-#  python data.py S000001/mag 2022-07-08T00:00:00Z 2022-07-09T00:00:00Z Field_Vector
-#  python data.py S000001/doppler 2020-08-07T00:00:00Z 2022-08-08T00:00:00Z Freq
+#  python data.py -d N000001/doppler --start 2019-05-24T00:00:00Z --stop 2019-05-25T23:59:59Z --parameters Freq
 
-import os
-import re
-import sys
-import json
-import zipfile
-import datetime
-
-debug = False # Print debug messages to stderr
+import util
 
 def error(emsg):
-  log(emsg)
-  exit(1)
-
-def log(msg):
-  if debug:
-    print(f"Debug: {msg}", file=sys.stderr)
+  raise util.Error(emsg)
 
 def files_needed(id, start, stop, data_dir):
+  import os
 
   sub_dir_map = {
     'mag': 'magData',
-    'doppler': 'csvData',
+    'dop': 'csvData',
     'drf': '',
   }
 
-  data_type = id.split('/')[-1]
+  # id = S000028/mag => S000028/magData
+  # id = S000028/dop/? => S000028/csvData
+  # id = S000028/drf => S000028
+
+  data_type = id.split('/')[1]
+  util.log(f"Dataset ID: {id}, data type: {data_type}")
   if data_type not in sub_dir_map:
     msg = f"Unknown dataset ID suffix for id '{id}'. "
-    msg = "Expected to end with '/mag', '/doppler', or '/drf'."
+    msg += "Expected to end with 'mag', 'dop', or 'drf'."
     error(msg)
 
-  # id = S000028/mag => S000028/magData
-  # id = S000028/doppler => S000028/csvData
-  # id = S000028/drf => S000028
-  dir_base = id.replace('/' + data_type, '')
+  dir_base = id.split('/')[0]
   dir_sub = sub_dir_map[data_type]
   dataset_dir = os.path.join(data_dir, dir_base, dir_sub)
   if not os.path.exists(dataset_dir):
@@ -66,32 +52,36 @@ def files_needed(id, start, stop, data_dir):
   start = start[0:10]
   stop = stop[0:10]
 
-  log(f"Looking for file with data in range [{start}, {stop}]")
+  util.log(f"Looking for file with data in range [{start}, {stop}]")
 
   if data_type == 'mag':
     files = files_needed_mag(dataset_dir, start, stop)
-  if data_type == 'doppler':
-    files = files_needed_doppler(dataset_dir, start, stop)
+  if data_type == 'dop':
+    freq = id.split('/')[-1]
+    files = files_needed_doppler(dataset_dir, freq, start, stop)
 
-  if debug:
-    if len(files) == 0:
-      log(f"No files found with data in range [{start}, {stop}]")
-    else:
-      s = "s" if len(files) > 1 else ""
-      log(f"Found {len(files)} file{s} with data in range [{start}, {stop}]:")
-      files_join = "  \n:   ".join(files)
-      log(files_join)
+  if len(files) == 0:
+    util.log(f"No files found with data in range [{start}, {stop}]")
+  else:
+    s = "s" if len(files) > 1 else ""
+    util.log(f"Found {len(files)} file{s} with data in range [{start}, {stop}]:")
+    files_join = "  \n:   ".join(files)
+    util.log(files_join)
 
   return files
 
 
-def files_needed_doppler(dataset_dir, start, stop):
+def files_needed_doppler(dataset_dir, freq, start, stop):
+  import os
+
   files_csv = [f for f in os.listdir(dataset_dir) if f.endswith(".csv")]
 
   files_needed = []
   for file in sorted(files_csv):
     file_date = file[0:10]
-    log(f"File: {file}, date: {file_date}")
+    if not file.endswith(f"{freq}.csv"):
+      continue
+    util.log(f"File: {file}, date: {file_date}")
     if start <= file_date <= stop:
       files_needed.append(os.path.join(dataset_dir, file))
 
@@ -99,20 +89,21 @@ def files_needed_doppler(dataset_dir, start, stop):
 
 
 def files_needed_mag(dataset_dir, start, stop):
+  import os
   files_zip = [f for f in os.listdir(dataset_dir) if f.endswith(".zip")]
   files_zip.sort()
 
   if not files_zip:
-    log(f"No .zip files found in dataset directory: {dataset_dir}")
-    sys.exit(0)
+    util.log(f"No .zip files found in dataset directory: {dataset_dir}")
+    return []
 
-  log(f"Found {len(files_zip)} files that end with .zip in {dataset_dir}")
+  util.log(f"Found {len(files_zip)} files that end with .zip in {dataset_dir}")
 
   files_needed = []
 
   for file in files_zip:
     file_date = file[3:13]
-    log(f"File: {file}, date: {file_date}")
+    util.log(f"  {file}, date: {file_date}")
     if start <= file_date <= stop:
       files_needed.append(os.path.join(dataset_dir, file))
 
@@ -121,49 +112,51 @@ def files_needed_mag(dataset_dir, start, stop):
 
 def print_data(id, filename, start, stop, parameters, data_dir):
 
-  if id.endswith('/mag'):
+  data_type = id.split('/')[1]
+  if data_type == 'mag':
     print_data_mag(filename, start, stop, parameters)
 
-  if id.endswith('/doppler'):
+  if data_type == 'dop':
     print_data_doppler(filename, start, stop, parameters)
 
 
 def print_data_doppler(filepath, start, stop, parameters):
 
-  if parameters is None:
-    parameters = ['Freq', 'Vpk']
+  import pandas as pd
 
-  # See check_files.py for a faster read approach using pandas.
-  with open(filepath, 'r') as f:
-    for line in f:
-      log(f"Processing line: {line.strip()}")
-      if not re.match(r'^[0-9]{4}', line):
-        continue
-      cols = line.split(',')
-      ts = cols[0].strip()
-      if ts[0:20] < start:
-        continue
-      if ts[0:20] >= stop:
-        break
+  # Read CSV file with pandas, skipping comment lines that start with #
+  df = pd.read_csv(filepath, comment='#', skipinitialspace=True)
 
-      row = ts
-      if 'Freq' or 'Vpk' in parameters:
-        row += "," + cols[1].strip()
-      if 'Vpk' in parameters:
-        row += "," + cols[2].strip()
-      print(row)
+  # Convert UTC column to datetime and set as index
+  if 'UTC' in df.columns:
+    df['UTC'] = pd.to_datetime(df['UTC'], utc=True)
+    df.set_index('UTC', inplace=True)
+
+  df = df[(df.index >= start) & (df.index < stop)]
+
+  if parameters is not None:
+    # Filter out columns that are not in the parameters list
+    df = df[parameters]
+
+  # Print HAPI CSV
+  print(df.to_csv(index=True, header=False, date_format='%Y-%m-%dT%H:%M:%SZ'), end='')
 
 
 def print_data_mag(filepath, start, stop, parameters):
 
   def extract_data(file):
     """Read files in a zip file into a string"""
+    import zipfile
+
     data = ""
     with zipfile.ZipFile(file, 'r') as z:
       for filename in sorted(z.namelist()):
         with z.open(filename) as f:
           data += f.read().decode('utf-8')
     return data
+
+  import json
+  import datetime
 
   if parameters is None:
     parameters = ['Field_Vector', 'rxryrz', 'rt', 'lt', 'Tm']
@@ -174,7 +167,7 @@ def print_data_mag(filepath, start, stop, parameters):
 
   for line in data.splitlines():
 
-    log(f"Processing line: {line}")
+    util.log(f"Processing line: {line}")
 
     if line.startswith('{'):
       # Row format:
@@ -193,19 +186,23 @@ def print_data_mag(filepath, start, stop, parameters):
       # Row format:
       # TODO: Verify that these columns are correct.
       entry = line.split(', ')
-      ts = entry[0].strip('"')
-      dt = datetime.datetime.strptime(ts, '%d %b %Y %H:%M:%S')
+      try:
+        ts = entry[0].strip('"')
+        dt = datetime.datetime.strptime(ts, '%d %b %Y %H:%M:%S')
+      except Exception as e:
+        error(f"Failed to parse ts '{ts}': {e}")
+
       entry = {
         'ts': dt.strftime('%Y-%m-%dT%H:%M:%SZ'),
-        'x': float(entry[1]),
-        'y': float(entry[2]),
-        'z': float(entry[3]),
-        'rx': float(entry[4]),
-        'ry': float(entry[5]),
-        'rz': float(entry[6]),
-        'rt': float(entry[7]),
-        'lt': float(entry[8]),
-        'Tm': float(entry[9]),
+        'x': float(entry[1]) if len(entry) > 1 else 'NaN',
+        'y': float(entry[2]) if len(entry) > 2 else 'NaN',
+        'z': float(entry[3]) if len(entry) > 3 else 'NaN',
+        'rx': float(entry[4]) if len(entry) > 4 else 'NaN',
+        'ry': float(entry[5]) if len(entry) > 5 else 'NaN',
+        'rz': float(entry[6]) if len(entry) > 6 else 'NaN',
+        'rt': float(entry[7]) if len(entry) > 7 else 'NaN',
+        'lt': float(entry[8]) if len(entry) > 8 else 'NaN',
+        'Tm': float(entry[9]) if len(entry) > 9 else 'NaN'
       }
     else:
       # TODO: Read other format
@@ -219,70 +216,56 @@ def print_data_mag(filepath, start, stop, parameters):
     row = entry['ts']
 
     if 'Field_Vector' in parameters:
-      row += f",{entry['x']},{entry['y']},{entry['z']}"
+      if 'x' in entry and 'y' in entry and 'z' in entry:
+        row += f",{entry['x']},{entry['y']},{entry['z']}"
+      else:
+        row += ",NaN,NaN,NaN"
     if 'rxryrz' in parameters:
-      row += f",{entry['rx']},{entry['ry']},{entry['rz']}"
+      if 'rx' in entry and 'ry' in entry and 'rz' in entry:
+        row += f",{entry['rx']},{entry['ry']},{entry['rz']}"
+      else:
+        row += ",NaN,NaN,NaN"
     if 'rt' in parameters:
-      row += f",{entry['rt']}"
+      if 'rt' in entry:
+        row += f",{entry['rt']}"
+      else:
+        row += ",NaN"
     if 'lt' in parameters:
-      row += f",{entry['lt']}"
+      if 'lt' in entry:
+        row += f",{entry['lt']}"
+      else:
+        row += ",NaN"
     if 'Tm' in parameters:
-      row += f",{entry['Tm']}"
+      if 'Tm' in entry:
+        row += f",{entry['Tm']}"
+      else:
+        row += ",NaN"
 
     print(row)
 
 
-def _data_dir():
-
-  # Default data directory is ../data relative to this script
-  script_dir = os.path.dirname(os.path.abspath(__file__))
-  data_dir_default = os.path.join(script_dir, "..", "data")
-  log(f"data_dir_default: {data_dir_default}")
-
-  # Get data_dir from environment variable
-  data_dir = os.getenv("PSWS_DATA_DIR", None)
-  log(f"PSWS_DATA_DIR: {data_dir}")
-
-  if not data_dir and not os.path.exists(data_dir_default):
-    msg = "Environment variable PSWS_DATA_DIR not set and directory "
-    msg += f"{data_dir_default} not found. Exiting with code 1."
-    error(msg)
-
-  if not data_dir and os.path.exists(data_dir_default):
-    log(f"PSWS_DATA_DIR not set, using default for data_dir: {data_dir_default}")
-    data_dir = data_dir_default
-
+if __name__ == "__main__":
   try:
-    data_dir = os.path.expanduser(data_dir)
-  except Exception:
-    msg = "Could not expand PSWS_DATA_DIR env variable using "
-    msg += f"os.path.expanduser('{data_dir}'). Exiting with code 1."
-    error(msg)
+    args = util.cli(endpoint="data")
+    for option in ("dataset", "start", "stop"):
+      if not args[option]:
+        raise util.Error(f"A --{option} argument is required.")
 
-  # Make data_dir an absolute path
-  data_dir = os.path.abspath(data_dir)
-  if not os.path.isabs(data_dir):
-    log(f"data_dir is not absolute, converting to absolute: {data_dir}")
-    data_dir = os.path.abspath(data_dir)
+    dataset = args["dataset"]
+    start = args["start"]
+    stop = args["stop"]
 
-  return data_dir
+    parameters = None
+    if args["parameters"] is not None:
+      parameters = [parameter.strip() for parameter in args["parameters"].split(",")]
 
+    data_dir = args["station_dir"].expanduser().resolve()
+    util.validate_station_dir(data_dir)
+    util.log(f"dataset: {dataset}, start: {start}, stop: {stop}")
 
-if len(sys.argv) < 4:
-  msg = "At least three command line arguments needed:\n"
-  msg += "  python data.py <id> <start> <stop> [<parameters>]"
-  error(msg)
+    files = files_needed(dataset, start, stop, data_dir)
+    for file_name in files:
+      print_data(dataset, file_name, start, stop, parameters, data_dir)
 
-id, start, stop = sys.argv[1], sys.argv[2], sys.argv[3]
-
-parameters = None
-if len(sys.argv) > 4:
-  parameters = [p.strip() for p in sys.argv[4].split(",")]
-
-data_dir = _data_dir()
-
-log(f"dataset: {id}, start: {start}, stop: {stop}")
-
-files = files_needed(id, start, stop, data_dir)
-for files in files:
-  print_data(id, files, start, stop, parameters, data_dir)
+  except (util.Error, OSError, ValueError) as error:
+    raise SystemExit(str(error)) from None
