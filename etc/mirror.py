@@ -1,27 +1,29 @@
 #!/usr/bin/env python3
 """
-mirror_first_last.py
+mirror.py
 
-Mirror a directory tree but only copy the first and last files in each directory.
+Mirror a directory tree but only copy the last N files in each directory.
 
 Behavior:
 - For every directory in the source tree, create the same directory in
   the destination tree.
 - Within each directory, find files (not subdirectories), sort them by
-  the chosen key (name, mtime, ctime, size) and copy only the first and
-  last file to the corresponding destination directory.
-- If there is 0 files: destination directory is created but remains empty.
-- If there is 1 file: it is copied once.
+  the chosen key (name, mtime, ctime, size) and copy only the last N
+  files to the corresponding destination directory (default: N = 1).
+- If there are no files: destination directory is created but remains empty.
+- If there are fewer than N files: all files are copied.
+- If N is -1: all files are copied.
 
 Usage:
-  python mirror_first_last.py /path/to/src /path/to/dst [--sort name|mtime|ctime|size] [--dry-run] [--verbose]
+  python mirror.py --help
+  python mirror.py /path/to/src /path/to/dst -n 3 [--sort name|mtime|ctime|size] [--dry-run] [--verbose]
 
 """
 import argparse
 import os
 import shutil
 import sys
-from typing import List
+from typing import List, Tuple
 
 
 def get_sorted_files(path: str, sort_key: str) -> List[str]:
@@ -48,8 +50,11 @@ def get_sorted_files(path: str, sort_key: str) -> List[str]:
     return [e.name for e in entries]
 
 
-def mirror_first_last(src: str, dst: str, sort_key: str = 'name', dry_run: bool = False, verbose: bool = False, top_n: int = None) -> None:
-    """Mirror directory tree from src to dst copying only first and last file per directory."""
+def mirror_last(src: str, dst: str, sort_key: str = 'name', dry_run: bool = False, verbose: bool = False, top_n: int = None, n: int = 1) -> Tuple[int, int]:
+    """Mirror directory tree copying the last n files per directory, or all if n is -1."""
+    if n != -1 and n < 1:
+        raise ValueError("n must be a positive integer or -1 to copy all files")
+
     src = os.path.abspath(src)
     dst = os.path.abspath(dst)
     total_size = 0
@@ -91,18 +96,13 @@ def mirror_first_last(src: str, dst: str, sort_key: str = 'name', dry_run: bool 
                 print(f"  no files to copy in {root}")
             continue
 
-        # Determine files to copy: first and last (unique)
-        to_copy = []
-        if len(sorted_files) == 1:
-            to_copy = [sorted_files[0]]
-        else:
-            to_copy = [sorted_files[0], sorted_files[-1]]
+        to_copy = sorted_files if n == -1 else sorted_files[-n:]
 
         # Copy each file
         for fname in to_copy:
             src_path = os.path.join(root, fname)
             dst_path = os.path.join(dest_dir, fname)
-            
+
             # Get file size
             try:
                 file_size = os.path.getsize(src_path)
@@ -113,32 +113,33 @@ def mirror_first_last(src: str, dst: str, sort_key: str = 'name', dry_run: bool 
             except Exception as e:
                 print(f"Warning: failed to get size of {src_path}: {e}", file=sys.stderr)
                 file_size = 0
-            
+
             if not dry_run:
                 try:
                     shutil.copy2(src_path, dst_path)
                 except Exception as e:
                     # Don't crash the whole run for one file; report and continue
                     print(f"Warning: failed to copy {src_path} -> {dst_path}: {e}", file=sys.stderr)
-    
+
     return total_size, total_files
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description='Mirror a directory tree copying only the first and last files in each directory')
+    p = argparse.ArgumentParser(description='Mirror a directory tree copying only the last N files in each directory')
     p.add_argument('src', help='Source directory')
     p.add_argument('dst', help='Destination directory')
-    p.add_argument('--sort', choices=['name', 'mtime', 'ctime', 'size'], default='name', help='Sort key to determine first/last (default: name)')
+    p.add_argument('-n', type=int, default=1, help='Number of files to copy per directory, or -1 for all files (default: 1)')
+    p.add_argument('--sort', choices=['name', 'mtime', 'ctime', 'size'], default='name', help='Sort key to determine the last N files (default: name)')
     p.add_argument('--dry-run', action='store_true', help="Don't actually copy files; just show what would be done")
     p.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
-    p.add_argument('--top-level-limit', '-n', type=int, default=None, help='Only traverse the first N top-level subdirectories (sorted by name).')
+    p.add_argument('--top-level-limit', type=int, default=None, help='Only traverse the first N top-level subdirectories (sorted by name).')
     return p.parse_args()
 
 
 def main():
     args = parse_args()
     try:
-        total_size, total_files = mirror_first_last(args.src, args.dst, sort_key=args.sort, dry_run=args.dry_run, verbose=args.verbose, top_n=args.top_level_limit)
+        total_size, total_files = mirror_last(args.src, args.dst, sort_key=args.sort, dry_run=args.dry_run, verbose=args.verbose, top_n=args.top_level_limit, n=args.n)
         total_mb = total_size / (1024 * 1024)
         total_gb = total_size / (1024 * 1024 * 1024)
         print(f"\n{'[dry-run] ' if args.dry_run else ''}Total: {total_files} files, {total_mb:.2f} MB ({total_gb:.2f} GB)")
