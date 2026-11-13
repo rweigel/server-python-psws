@@ -8,7 +8,22 @@ python -m pip install -e .
 
 # Run
 
-Edit the `PSWS_DATA_DIR` variable in `config.json` to point to the root directory of data. See `etc/sshmnt.sh` for mounting the PSWS data directory using a SSH filesystem.
+If executing on `pswsnetwork.eng.ua.edu`
+
+* Edit the `PSWS_DATA_DIR` variable in `config.json` to be `/home`.
+
+Otherwise,
+
+* dee `etc/sshmnt.sh` for mounting the PSWS data directory `pswsnetwork.eng.ua.edu:/home` using a SSH filesystem and modify the `PSWS_DATA_DIR` variable in `config.json` to point to the mounted directory.
+
+* download and extract a sample of the data and modify the `PSWS_DATA_DIR` variable in `config.json` to point to it.
+  ```bash
+  mkdir -p data/;
+  cd data/
+  curl -O http://mag.gmu.edu/git-data/server-python-psws/data.tgz
+  tar zxvf data.tgz
+  ```
+
 
 Create or update catalog. This will take a few minutes.
 
@@ -16,11 +31,13 @@ Create or update catalog. This will take a few minutes.
 python psws/catalog.py
 ```
 
+Start server
+
 ```
 hapiserver --config config.json
 ```
 
-For additional command-line options, see
+For additional `hapiserver` command-line options, see
 
 ```
 hapiserver --help

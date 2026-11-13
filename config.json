@@ -8,8 +8,7 @@
   "ENV": {
     "PSWS_BIN_DIR": "psws",
     "PSWS_CACHE_DIR": "/Users/rweigel/git/hapi/server-python-psws/data",
-    "xPSWS_DATA_DIR": "/Users/rweigel/git/hapi/server-python-psws/data",
-    "PSWS_DATA_DIR": "/Users/rweigel/sshfs/psws",
+    "xPSWS_DATA_DIR": "/Users/rweigel/sshfs/psws",
     "xPSWS_DATA_DIR": "/home"
   },
   "about": {
