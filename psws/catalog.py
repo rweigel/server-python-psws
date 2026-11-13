@@ -133,12 +133,13 @@ def _info(dataset, entry):
         raise ValueError("parsed metadata must be a dictionary")
       template['geoLocation'] = [parsed['Lon'], parsed['Lat'], parsed['Elv']]
     if columns := entry.get('columns'):
-      if not isinstance(columns, list):
-        raise ValueError("columns metadata must be a list")
+      if not isinstance(columns, str):
+        raise ValueError("columns metadata must be a string")
       columns = columns.split(",")[1:]
-      for i, col in enumerate(columns):
-        columns[i] = col.strip()
-        template['parameters'][i]['name'] = col
+      if len(columns) != len(template['parameters']) - 1:
+        raise ValueError("columns metadata does not match template parameters")
+      for i, col in enumerate(columns, start=1):
+        template['parameters'][i]['name'] = col.strip()
 
   except (OSError, ValueError, KeyError, TypeError) as error:
     msg = f"Failed to build info for {dataset} using {template_path}: {error}"
@@ -241,7 +242,13 @@ def _catalog_full():
   if options["station"] is not None:
     station_dirs = [station for station in station_dirs if station == options["station"]]
   if not station_dirs:
-    raise util.Error(f"No matching station directories found in {options['station_dir']}.")
+    msg = (
+      f"No matching station directories found in {options['station_dir']} "
+      f"with regex {options['station_dir_regex']}. "
+      f"If running from command line, set --station-dir. If running from "
+      f"and using the HAPI server, check PSWS_DATA_DIR in config.json."
+    )
+    raise util.Error(msg)
 
   msg = (
     f"{len(station_dirs)} directories matching regex "
