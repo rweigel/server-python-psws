@@ -1,6 +1,7 @@
 from functools import cache
 
 STATION_DIR = "/home"
+STATION_DIR_FALLBACK = "../data"
 STATION_DIR_REGEX = "^[A-Z][0-9]{6}"
 
 class Error(ValueError):
@@ -73,11 +74,16 @@ def cli(*, endpoint=None):
 
   parser.add_argument(
       '--station-dir',
-      default=STATION_DIR,
+      default=None,
       type=Path,
       required=False,
       dest='station_dir',
-      help=f'Directory containing station subdirectories (e.g., S0000183, N000020). Default is {STATION_DIR}.'
+      help=(
+        'Directory containing station subdirectories (e.g., S0000183, N000020). '
+        f'Default is {STATION_DIR}, falling back to {STATION_DIR_FALLBACK} '
+        'relative to this script if the default directory is unavailable '
+        'or has no matching station subdirectories.'
+      )
   )
 
   if endpoint != "data":
@@ -138,6 +144,31 @@ def cli(*, endpoint=None):
   ):
     if environment_name in os.environ:
       args[option_name] = Path(os.environ[environment_name])
+  if args["station_dir"] is None:
+    args["station_dir"] = Path(STATION_DIR)
+    fallback_reason = None
+    if not args["station_dir"].is_dir():
+      fallback_reason = "is unavailable"
+    else:
+      station_pattern = re.compile(args.get("station_dir_regex", STATION_DIR_REGEX))
+      try:
+        with os.scandir(args["station_dir"]) as entries:
+          has_stations = any(
+            station_pattern.fullmatch(entry.name) and entry.is_dir()
+            for entry in entries
+          )
+      except OSError as error:
+        raise Error(f"Failed to inspect station directory {STATION_DIR}: {error}") from error
+      if not has_stations:
+        fallback_reason = "has no matching station subdirectories"
+    if fallback_reason is not None:
+      import sys
+      args["station_dir"] = (base_dir / STATION_DIR_FALLBACK).resolve()
+      print(
+        f"Default station directory {STATION_DIR} {fallback_reason}; "
+        f"using fallback {args['station_dir']}.",
+        file=sys.stderr,
+      )
   return args
 
 

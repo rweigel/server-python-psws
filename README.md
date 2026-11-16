@@ -14,9 +14,10 @@ If executing on `pswsnetwork.eng.ua.edu`
 
 Otherwise,
 
-* dee `etc/sshmnt.sh` for mounting the PSWS data directory `pswsnetwork.eng.ua.edu:/home` using a SSH filesystem and modify the `PSWS_DATA_DIR` variable in `config.json` to point to the mounted directory.
+* edit and execute `etc/sshmnt.sh` to mount the PSWS data directory `pswsnetwork.eng.ua.edu:/home` using a SSH filesystem; modify the `PSWS_DATA_DIR` variable in `config.json` to point to the mounted directory.
 
-* download and extract a sample of the data and modify the `PSWS_DATA_DIR` variable in `config.json` to point to it.
+* download and extract a sample of the data at `pswsnetwork.eng.ua.edu:/home` and modify the `PSWS_DATA_DIR` variable in `config.json` to point to it.
+
   ```bash
   mkdir -p data/;
   cd data/
@@ -24,12 +25,17 @@ Otherwise,
   tar zxvf data.tgz
   ```
 
-
-Create or update catalog. This will take a few minutes.
+Create or update catalog. This will take a long time (hours?) on `pswsnetwork.eng.ua.edu:/home`. For the sample data, it takes ~5 seconds.
 
 ```
-python psws/catalog.py
+python psws/catalog.py --debug
 ```
+
+Without `--station-dir` or `PSWS_DATA_DIR`, the scripts use `/home`.
+If `/home` is unavailable or has no matching station subdirectories, they use
+the repository's `data/` directory and log the fallback to stderr.
+Explicit CLI or environment paths never fall back;
+`PSWS_DATA_DIR` takes precedence over `--station-dir`.
 
 Start server
 
