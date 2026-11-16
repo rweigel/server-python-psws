@@ -4,13 +4,6 @@ Returns HAPI info JSON stdout
 Equivalent API response to:
   hapi/info?dataset=<id>
 
-Command-line usage:
-
-  Print HAPI info for dataset to stdout
-    python info.py --dataset S000028/mag
-    python info.py --dataset S000028/mag --debug
-  See also
-    python info.py --help
 """
 
 def info(dataset):
@@ -32,7 +25,7 @@ if __name__ == "__main__":
   import util
 
   try:
-    args = util.cli()
+    args = util.cli(endpoint="info")
     result = info(args["dataset"])
     output = json.dumps(result, indent=2)
   except (util.Error, OSError, ValueError) as error:

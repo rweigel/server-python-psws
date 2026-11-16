@@ -4,13 +4,6 @@
 # Details on options
 #   python catalog.py --help
 #
-# Debugging
-#   Specify a single station and enable debug output:
-#     python catalog.py --station N000008 --debug
-#   Change default root directory from /home
-#   python catalog.py --station-dir ~/sshfs/psws --debug
-#
-#
 # Equivalent API response to:
 #   hapi/catalog
 

@@ -8,9 +8,12 @@ class Error(ValueError):
   """A non-fatal error."""
 
 
-def log(msg):
+def log(msg, *, debug=None):
   import sys
-  if cli()["debug"]:
+  # Debug keyword needed when log() is called from cli().
+  if debug is None:
+    debug = cli()["debug"]
+  if debug:
     print(msg, file=sys.stderr)
 
 
@@ -52,10 +55,21 @@ def cli(*, endpoint=None):
   import os
   import re
   from pathlib import Path
+  from textwrap import dedent
 
   parser = argparse.ArgumentParser(
     description='Read Digital RF data from PSWS station directories.'
   )
+  if endpoint == "info":
+    parser.formatter_class = argparse.RawDescriptionHelpFormatter
+    parser.epilog = dedent("""\
+      Examples:
+        Print HAPI info for a dataset to stdout:
+          python psws/info.py --dataset S000028/mag
+
+        Enable debug output:
+          python psws/info.py --dataset S000028/mag --debug
+    """)
 
   parser.add_argument(
     '-d', '--dataset',
@@ -78,13 +92,12 @@ def cli(*, endpoint=None):
       type=Path,
       required=False,
       dest='station_dir',
-      help=(
-        'Directory containing station subdirectories (e.g., S0000183, N000020). '
-        f'Default is {STATION_DIR}, falling back to {STATION_DIR_FALLBACK} '
-        'relative to this script if the default directory is unavailable '
-        'or has no matching station subdirectories.'
+      help=(f'Directory containing station subdirectories '
+            f'(e.g., S0000183, N000020). Default is {STATION_DIR}. '
+            f'If the default is unavailable or has no matching station '
+            f'subdirectories, use {STATION_DIR_FALLBACK} relative to this '
+            'script. Explicit CLI or environment paths never fall back.')
       )
-  )
 
   if endpoint != "data":
     parser.add_argument(
@@ -144,13 +157,16 @@ def cli(*, endpoint=None):
   ):
     if environment_name in os.environ:
       args[option_name] = Path(os.environ[environment_name])
+
   if args["station_dir"] is None:
     args["station_dir"] = Path(STATION_DIR)
     fallback_reason = None
     if not args["station_dir"].is_dir():
       fallback_reason = "is unavailable"
     else:
-      station_pattern = re.compile(args.get("station_dir_regex", STATION_DIR_REGEX))
+      station_pattern = re.compile(
+        args.get("station_dir_regex", STATION_DIR_REGEX)
+      )
       try:
         with os.scandir(args["station_dir"]) as entries:
           has_stations = any(
@@ -158,17 +174,19 @@ def cli(*, endpoint=None):
             for entry in entries
           )
       except OSError as error:
-        raise Error(f"Failed to inspect station directory {STATION_DIR}: {error}") from error
+        raise Error(
+          f"Failed to inspect station directory {STATION_DIR}: {error}"
+        ) from error
       if not has_stations:
         fallback_reason = "has no matching station subdirectories"
     if fallback_reason is not None:
-      import sys
       args["station_dir"] = (base_dir / STATION_DIR_FALLBACK).resolve()
-      print(
+      log(
         f"Default station directory {STATION_DIR} {fallback_reason}; "
         f"using fallback {args['station_dir']}.",
-        file=sys.stderr,
+        debug=args["debug"],
       )
+
   return args
 
 

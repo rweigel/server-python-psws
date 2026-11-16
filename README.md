@@ -33,7 +33,8 @@ python psws/catalog.py --debug
 
 Without `--station-dir` or `PSWS_DATA_DIR`, the scripts use `/home`.
 If `/home` is unavailable or has no matching station subdirectories, they use
-the repository's `data/` directory and log the fallback to stderr.
+the repository's `data/` directory and log the fallback to stderr only with
+`--debug`.
 Explicit CLI or environment paths never fall back;
 `PSWS_DATA_DIR` takes precedence over `--station-dir`.
 

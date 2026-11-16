@@ -51,7 +51,7 @@ class StationDirectoryTests(unittest.TestCase):
     self.default.mkdir()
     for endpoint in (None, "data"):
       with self.subTest(endpoint=endpoint):
-        options, message = self.parse(endpoint=endpoint)
+        options, message = self.parse("--debug", endpoint=endpoint)
         self.assertEqual(options["station_dir"], self.fallback.resolve())
         self.assertIn("no matching station subdirectories", message)
 
@@ -59,9 +59,19 @@ class StationDirectoryTests(unittest.TestCase):
     self.default.mkdir()
     (self.default / "other").mkdir()
     (self.default / "N000008").write_text("not a directory")
-    options, message = self.parse()
+    options, message = self.parse("--debug")
     self.assertEqual(options["station_dir"], self.fallback.resolve())
     self.assertIn("no matching station subdirectories", message)
+
+  def test_fallback_is_silent_without_debug(self):
+    for exists in (False, True):
+      with self.subTest(default_exists=exists):
+        if exists:
+          self.default.mkdir()
+        util.cli.cache_clear()
+        options, message = self.parse()
+        self.assertEqual(options["station_dir"], self.fallback.resolve())
+        self.assertEqual(message, "")
 
   def test_default_uses_selected_station_regex(self):
     (self.default / "custom").mkdir(parents=True)
@@ -78,14 +88,14 @@ class StationDirectoryTests(unittest.TestCase):
   def test_missing_default_uses_script_relative_fallback_and_logs(self):
     for endpoint in (None, "data"):
       with self.subTest(endpoint=endpoint):
-        options, message = self.parse(endpoint=endpoint)
+        options, message = self.parse("--debug", endpoint=endpoint)
         self.assertEqual(options["station_dir"], self.fallback.resolve())
         self.assertIn(str(self.default), message)
         self.assertIn(str(self.fallback.resolve()), message)
 
   def test_default_file_uses_fallback(self):
     self.default.write_text("not a directory")
-    options, message = self.parse()
+    options, message = self.parse("--debug")
     self.assertEqual(options["station_dir"], self.fallback.resolve())
     self.assertIn("fallback", message)
 
