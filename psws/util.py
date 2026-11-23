@@ -49,6 +49,7 @@ def listdirs(dir_base, regex=None, sort=True):
     and is_dir(dir)
   ]
 
+
 @cache
 def cli(*, endpoint=None):
   import argparse
@@ -96,7 +97,9 @@ def cli(*, endpoint=None):
             f'(e.g., S0000183, N000020). Default is {STATION_DIR}. '
             f'If the default is unavailable or has no matching station '
             f'subdirectories, use {STATION_DIR_FALLBACK} relative to this '
-            'script. Explicit CLI or environment paths never fall back.')
+            'script. Explicit CLI or environment paths never fall back. '
+            'PSWS_DATA_DIR overrides this option; relative environment '
+            'paths are resolved relative to the project config.json.')
       )
 
   if endpoint != "data":
@@ -128,7 +131,11 @@ def cli(*, endpoint=None):
 
   parser.add_argument(
       '--cache-dir', type=Path, default=cache_dir, dest='cache_dir',
-      help=f'Directory to use for caching sample data. Default is {cache_dir}. PSWS_CACHE_DIR overrides this option.'
+      help=(
+        f'Directory to use for caching sample data. Default is {cache_dir}. '
+        'PSWS_CACHE_DIR overrides this option; relative environment paths '
+        'are resolved relative to the project config.json.'
+      )
   )
   parser.add_argument(
       '--log-dir', type=Path, default=log_dir, dest='log_dir',
@@ -156,7 +163,16 @@ def cli(*, endpoint=None):
     ("PSWS_DATA_DIR", "station_dir"),
   ):
     if environment_name in os.environ:
-      args[option_name] = Path(os.environ[environment_name])
+      path = Path(os.environ[environment_name])
+      if not path.is_absolute():
+        resolved_path = (base_dir.parent / path).resolve()
+        log(
+          f"Relative {environment_name} path {path} resolved to "
+          f"{resolved_path} relative to the project config.json.",
+          debug=args["debug"],
+        )
+        path = resolved_path
+      args[option_name] = path
 
   if args["station_dir"] is None:
     args["station_dir"] = Path(STATION_DIR)

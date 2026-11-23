@@ -90,7 +90,7 @@ def _run(configs, data_type, wait, short=False):
     start_dt = datetime.fromisoformat(start)
     stop = (start_dt + timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ')
 
-    if False:
+    if True:
       url = f"{url_base}/data?dataset={dataset['id']}&start={start}&stop={stop}"
       response = requests.get(url)
       assert response.status_code == 200
@@ -107,5 +107,5 @@ def _run(configs, data_type, wait, short=False):
 
 
 if __name__ == "__main__":
-  test_short()
+  test_server(short=True)
 

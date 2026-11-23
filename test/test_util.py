@@ -114,3 +114,61 @@ class StationDirectoryTests(unittest.TestCase):
     self.assertEqual(message, "")
     with self.assertRaisesRegex(util.Error, "does not exist"):
       util.validate_station_dir(options["station_dir"])
+
+  def test_relative_environment_paths_use_config_directory(self):
+    for endpoint in (None, "info", "data"):
+      with self.subTest(endpoint=endpoint):
+        util.cli.cache_clear()
+        with patch.dict(os.environ, {
+          "PSWS_DATA_DIR": "./data",
+          "PSWS_CACHE_DIR": "cache/../cache",
+        }):
+          options, message = self.parse(
+            "--station-dir", "ignored-data",
+            "--cache-dir", "ignored-cache",
+            endpoint=endpoint,
+          )
+        self.assertEqual(
+          options["station_dir"], (self.root / "data").resolve()
+        )
+        self.assertEqual(
+          options["cache_dir"], (self.root / "cache").resolve()
+        )
+        self.assertEqual(message, "")
+
+  def test_absolute_environment_paths_are_unchanged(self):
+    data_dir = self.root / "absolute-data"
+    cache_dir = self.root / "absolute-cache"
+    with patch.dict(os.environ, {
+      "PSWS_DATA_DIR": str(data_dir),
+      "PSWS_CACHE_DIR": str(cache_dir),
+    }):
+      options, _ = self.parse()
+    self.assertEqual(options["station_dir"], data_dir)
+    self.assertEqual(options["cache_dir"], cache_dir)
+
+  def test_relative_environment_paths_log_only_with_debug(self):
+    for debug in (False, True):
+      with self.subTest(debug=debug):
+        util.cli.cache_clear()
+        with patch.dict(os.environ, {
+          "PSWS_DATA_DIR": "./data",
+          "PSWS_CACHE_DIR": "./cache",
+        }):
+          options, message = self.parse(*(["--debug"] if debug else []))
+        if debug:
+          for name, key in (
+            ("PSWS_DATA_DIR", "station_dir"),
+            ("PSWS_CACHE_DIR", "cache_dir"),
+          ):
+            self.assertIn(f"Relative {name} path", message)
+            self.assertIn(str(options[key]), message)
+        else:
+          self.assertEqual(message, "")
+
+  def test_relative_cli_paths_are_unchanged(self):
+    options, _ = self.parse(
+      "--station-dir", "cli-data", "--cache-dir", "cli-cache"
+    )
+    self.assertEqual(options["station_dir"], Path("cli-data"))
+    self.assertEqual(options["cache_dir"], Path("cli-cache"))
