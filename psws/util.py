@@ -1,8 +1,17 @@
 from functools import cache
+from pathlib import Path
+
+base_dir = Path(__file__).resolve().parent.parent / "data"
+# Base directory for output data storage. One dir up from the current file.
+out_dir = Path(__file__).resolve().parent.parent / "data-out"
 
 STATION_DIR = "/home"
-STATION_DIR_FALLBACK = "../data"
+STATION_DIR_FALLBACK = base_dir / "home"
 STATION_DIR_REGEX = "^[A-Z][0-9]{6}"
+
+CACHE_DIR = out_dir / "cache"
+LOG_DIR = out_dir / "log"
+CATALOG_DIR = CACHE_DIR / "hapi"
 
 class Error(ValueError):
   """A non-fatal error."""
@@ -81,11 +90,14 @@ def cli(*, endpoint=None):
 
   if endpoint == "data":
     parser.add_argument(
-      '--parameters', nargs='?', const=None, default=None, help='Comma-separated parameter names.')
+      '--parameters', nargs='?', const=None, default=None,
+      help='Comma-separated parameter names.')
     parser.add_argument(
-      '--start', default=None, help='Start time in UTC, e.g., 2025-10-20T00:00:00Z.')
+      '--start', default=None,
+      help='Start time in UTC, e.g., 2025-10-20T00:00:00Z.')
     parser.add_argument(
-      '--stop', default=None, help='Exclusive stop time in UTC, e.g., 2025-10-21T00:00:00Z.')
+      '--stop', default=None,
+      help='Exclusive stop time in UTC, e.g., 2025-10-21T00:00:00Z.')
 
   parser.add_argument(
       '--station-dir',
@@ -97,9 +109,7 @@ def cli(*, endpoint=None):
             f'(e.g., S0000183, N000020). Default is {STATION_DIR}. '
             f'If the default is unavailable or has no matching station '
             f'subdirectories, use {STATION_DIR_FALLBACK} relative to this '
-            'script. Explicit CLI or environment paths never fall back. '
-            'PSWS_DATA_DIR overrides this option; relative environment '
-            'paths are resolved relative to the project config.json.')
+            'script. Explicit CLI or environment paths never fall back. ')
       )
 
   if endpoint != "data":
@@ -108,7 +118,8 @@ def cli(*, endpoint=None):
         default=STATION_DIR_REGEX,
         required=False,
         dest='station_dir_regex',
-        help='Regex pattern that must match the entire station subdirectory name. Use .* to match any directory name.'
+        help=('Regex pattern that must match the entire station subdirectory '
+              'name. Use .* to match any directory name.')
     )
     parser.add_argument(
         '--station', default=None,
@@ -124,27 +135,19 @@ def cli(*, endpoint=None):
       help='Use any cached sample metadata and data if available.'
   )
 
-  base_dir = Path(__file__).resolve().parent
-  cache_dir = base_dir / "data" / "cache"
-  log_dir = base_dir / "data" / "log"
-  catalog_dir = base_dir / "data" / "hapi"
 
   parser.add_argument(
-      '--cache-dir', type=Path, default=cache_dir, dest='cache_dir',
-      help=(
-        f'Directory to use for caching sample data. Default is {cache_dir}. '
-        'PSWS_CACHE_DIR overrides this option; relative environment paths '
-        'are resolved relative to the project config.json.'
-      )
+      '--cache-dir', type=Path, default=CACHE_DIR, dest='cache_dir',
+      help=f'Directory to use for caching data and metadata. Default: {CACHE_DIR}. '
   )
   parser.add_argument(
-      '--log-dir', type=Path, default=log_dir, dest='log_dir',
-      help=f'Directory to use for log files. Default is {log_dir}.'
+      '--log-dir', type=Path, default=LOG_DIR, dest='log_dir',
+      help=f'Directory to use for log files. Default: {LOG_DIR}.'
   )
   if endpoint != "data":
     parser.add_argument(
-        '--catalog-dir', type=Path, default=catalog_dir, dest='catalog_dir',
-        help=f'Directory to write hapi catalog. Default is {catalog_dir}.'
+        '--catalog-dir', type=Path, default=CATALOG_DIR, dest='catalog_dir',
+        help=f'Directory to write hapi catalog. Default: {CATALOG_DIR}.'
     )
 
   args, _ = parser.parse_known_args()
@@ -158,21 +161,6 @@ def cli(*, endpoint=None):
       raise Error(f"Invalid --station-dir-regex: {error}") from error
 
   args = vars(args)
-  for environment_name, option_name in (
-    ("PSWS_CACHE_DIR", "cache_dir"),
-    ("PSWS_DATA_DIR", "station_dir"),
-  ):
-    if environment_name in os.environ:
-      path = Path(os.environ[environment_name])
-      if not path.is_absolute():
-        resolved_path = (base_dir.parent / path).resolve()
-        log(
-          f"Relative {environment_name} path {path} resolved to "
-          f"{resolved_path} relative to the project config.json.",
-          debug=args["debug"],
-        )
-        path = resolved_path
-      args[option_name] = path
 
   if args["station_dir"] is None:
     args["station_dir"] = Path(STATION_DIR)

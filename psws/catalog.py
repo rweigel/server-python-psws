@@ -21,12 +21,12 @@ def catalog(dataset=None):
     if catalog is not None:
       return _catalog_filter(catalog, dataset=dataset, options=options)
 
-    catalog_full = _cache_read("catalog.full")
+    catalog_full = _cache_read("catalog.psws")
 
   if catalog_full is None:
     catalog_full = _catalog_full()
     if not restricted:
-      _cache_write("catalog.full", catalog_full)
+      _cache_write("catalog.psws", catalog_full)
 
   catalog_full = _catalog_filter(catalog_full, dataset=dataset, options=options)
 
@@ -200,7 +200,7 @@ def _catalog_full():
   single HAPI dataset would be inaccurate.)
 
   Writes:
-    catalog.full.json: Full (non-HAPI) catalog in JSON format.
+    catalog.psws.json: Full (non-HAPI) catalog in JSON format.
 
   Returns:
     dict: (non-HAPI) catalog with structure

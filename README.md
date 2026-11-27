@@ -12,21 +12,17 @@ python -m pip install -e .
 
 # Set-up data
 
-## Using sample data
+Skip this step if executing code on `pswsnetwork.eng.ua.edu`.
 
-Download and extract a sample of the data taken from `pswsnetwork.eng.ua.edu:/home` and modify the `PSWS_DATA_DIR` variable in `config.json` to point to it.
+Download and extract a sample of the data taken from `pswsnetwork.eng.ua.edu:/home`:
 
 ```bash
 cd server-python-psws/
-mkdir -p data/
-cd data/
+mkdir -p data/home/
+cd data/home/
 curl -O http://mag.gmu.edu/git-data/server-python-psws/data.tgz
 tar zxvf data.tgz
 ```
-
-## On `pswsnetwork.eng.ua.edu`
-
-Edit the `PSWS_DATA_DIR` variable in `config.json` to be `/home`.
 
 # Prepare `catalog`
 
@@ -41,7 +37,7 @@ python psws/catalog.py --debug
 Start server
 
 ```bash
-hapiserver --config config.json
+hapiserver --config config.json --workers 4
 ```
 
 For additional `hapiserver` command-line options, see
